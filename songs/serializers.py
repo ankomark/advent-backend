@@ -19,12 +19,15 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 class TrackSerializer(serializers.ModelSerializer):
      likes_count = serializers.SerializerMethodField()
-     is_favorite = serializers.SerializerMethodField()
+     favorite = serializers.SerializerMethodField()
+     def get_favorite(self, obj):
+        user = self.context['request'].user
+        return Like.objects.filter(user=user, track=obj).exists()
      class Meta:
         model = Track
         fields = [
             'id', 'title', 'artist', 'album', 'audio_file',
-            'cover_image', 'lyrics', 'slug', 'is_favorite',
+            'cover_image', 'lyrics', 'slug', 'favorite',
             'views', 'downloads','likes_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['user','artist', 'slug', 'views', 'downloads', 'created_at', 'updated_at']

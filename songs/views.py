@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny
 from django.utils.text import slugify
 from rest_framework.exceptions import ValidationError
 from django.http import FileResponse,Http404
+from django.http import JsonResponse
 
 
 
@@ -103,19 +104,47 @@ class TrackViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Audio file not found'}, status=404)
         return FileResponse(open(track.audio_file.path, 'rb'), as_attachment=True, filename=track.audio_file.name)
     @action(detail=True, methods=['post'])
-    def favorite(self, request, pk=None):
-        track = self.get_object()
+    def favorites(self, request):
+   
         user = request.user
-
         if not user.is_authenticated:
             return Response({'detail': 'Authentication required'}, status=401)
 
-        if track.favorites.filter(id=user.id).exists():
-            track.favorites.remove(user)
-            return Response({'message': 'Removed from favorites'})
-        else:
-            track.favorites.add(user)
-            return Response({'message': 'Added to favorites'})
+        favorite_tracks = user.favorite_tracks.all()
+        serializer = self.get_serializer(favorite_tracks, many=True)
+        return Response(serializer.data)
+    @action(detail=True, methods=['post'], url_path='favorite')
+    def toggle_favorite(self, request, pk=None):
+        track = self.get_object()
+        user = request.user
+
+        # Toggle favorite status
+        existing_like = Like.objects.filter(user=user, track=track).first()
+        if existing_like:
+            existing_like.delete()
+            likes_count = Like.objects.filter(track=track).count()
+            return Response({
+                "status": "Track unliked",
+                "likes_count": likes_count,
+                "favorite": False
+            }, status=200)
+
+        Like.objects.create(user=user, track=track)
+        likes_count = Like.objects.filter(track=track).count()
+        return Response({
+            "status": "Track liked",
+            "likes_count": likes_count,
+            "favorite": True
+        }, status=200)
+
+
+    @action(detail=False, methods=['get'], url_path='favorites')
+    def get_favorites(self, request):
+        user = request.user
+        favorites = Track.objects.filter(likes__user=user)
+        serializer = TrackSerializer(favorites, many=True, context={"request": request})
+        return Response(serializer.data)
+
 class PlaylistViewSet(viewsets.ModelViewSet):
     queryset = Playlist.objects.all()
     serializer_class = PlaylistSerializer
@@ -171,3 +200,15 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+
+class FavoriteTracksView(APIView):
+    permission_classes = [IsAuthenticated]  # Ensure authentication is enforced
+
+    def get(self, request):
+        user = request.user
+        favorite_tracks = Track.objects.filter(likes__user=user)  # Query for the user's favorites
+        serializer = TrackSerializer(favorite_tracks, many=True, context={"request": request})
+        return Response(serializer.data, status=200)
+
+
