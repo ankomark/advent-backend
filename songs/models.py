@@ -108,10 +108,12 @@ class Category(models.Model):
 # Profile Model (Extended Features for Users)
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    picture = models.ImageField(upload_to='profiles/', blank=True, null=True)
+
     bio = models.TextField(blank=True, null=True)
     birth_date = models.DateField(blank=True, null=True)
     location = models.CharField(max_length=100, blank=True, null=True)
-    website = models.URLField(blank=True, null=True)
+    
     is_public = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -30,7 +30,7 @@ class TrackSerializer(serializers.ModelSerializer):
             'cover_image', 'lyrics', 'slug', 'favorite',
             'views', 'downloads','likes_count', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['user','artist', 'slug', 'views', 'downloads', 'created_at', 'updated_at']
+        read_only_fields = ['artist', 'slug', 'views', 'downloads', 'created_at', 'updated_at']
      def get_likes_count(self, obj):
       return obj.likes.count()
      def get_is_favorite(self, obj):
@@ -46,11 +46,15 @@ class PlaylistSerializer(serializers.ModelSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
     class Meta:
         model = Profile
-        fields = ('id', 'user', 'bio', 'birth_date', 'location', 'website', 'is_public', 'created_at', 'updated_at')
+        fields = ['bio', 'birth_date', 'location', 'is_public', 'picture']
 
+    def create(self, validated_data):
+        user = self.context['request'].user  # Access user from request
+        # Remove 'user' from validated_data if it exists
+        profile = Profile.objects.create(user=user, **validated_data)
+        return profile
 
 class CommentSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)

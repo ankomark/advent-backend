@@ -10,9 +10,10 @@ from django.utils.text import slugify
 from rest_framework.exceptions import ValidationError
 from django.http import FileResponse,Http404
 from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
 
-
-
+from django.contrib.auth.decorators import login_required
+from rest_framework import status
 from .models import User, Track, Playlist, Profile, Comment, Like, Category
 from .serializers import (
     UserSerializer,
@@ -58,12 +59,16 @@ class TrackViewSet(viewsets.ModelViewSet):
         title = serializer.validated_data.get('title')
         slug = slugify(title)
 
-        # Check if the slug already exists
-        if Track.objects.filter(slug=slug).exists():
-            raise serializers.ValidationError({'error': 'A track with this slug already exists.'})
+        # Ensure the slug is unique by appending a number if necessary
+        base_slug = slug
+        counter = 1
+        while Track.objects.filter(slug=slug).exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
 
-        # Save the serializer with user and slug
-        serializer.save(artist=self.request.user, user=self.request.user, slug=slug)
+        # Save the serializer with artist (current user) and the unique slug
+        serializer.save(artist=self.request.user, slug=slug)
+
 
     
     @action(detail=True, methods=['post'])
@@ -154,6 +159,8 @@ class PlaylistViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
+
+
 class ProfileViewSet(viewsets.ModelViewSet):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
@@ -163,8 +170,46 @@ class ProfileViewSet(viewsets.ModelViewSet):
         if serializer.instance.user != self.request.user:
             raise PermissionDenied("You can only update your own profile.")
         serializer.save()
-    
 
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def check_or_redirect(self, request):
+        user = request.user
+        if hasattr(user, 'profile'):
+            return Response({'profile_exists': True}, status=status.HTTP_200_OK)
+        return Response({'profile_exists': False, 'message': 'Redirect to create profile'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def create_profile(self, request):
+        if hasattr(request.user, 'profile'):
+            return Response({'detail': 'Profile already exists for this user.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Pass the request to the serializer context
+        serializer = ProfileSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            print("Serializer data is valid:", serializer.validated_data)  # Debug log
+            serializer.save()  # Save will now correctly handle user
+            print("Profile created successfully")  # Debug log
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        print("Serializer errors:", serializer.errors)  # Debug log
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+    
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def has_profile(self, request):
+        profile_exists = hasattr(self.request.user, 'profile')
+        return Response({'profile_exists': profile_exists})
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def me(self, request):
+        """Retrieve the profile of the authenticated user."""
+        try:
+            profile = request.user.profile  # Assuming 'profile' is a one-to-one field related to the user
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Profile.DoesNotExist:
+            return Response({'detail': 'Profile does not exist for this user.'}, status=status.HTTP_404_NOT_FOUND)
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
@@ -210,5 +255,3 @@ class FavoriteTracksView(APIView):
         favorite_tracks = Track.objects.filter(likes__user=user)  # Query for the user's favorites
         serializer = TrackSerializer(favorite_tracks, many=True, context={"request": request})
         return Response(serializer.data, status=200)
-
-
