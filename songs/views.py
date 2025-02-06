@@ -127,29 +127,18 @@ class TrackViewSet(viewsets.ModelViewSet):
         favorite_tracks = user.favorite_tracks.all()
         serializer = self.get_serializer(favorite_tracks, many=True)
         return Response(serializer.data)
-    @action(detail=True, methods=['post'], url_path='favorite')
+    @action(detail=True, methods=['post'], url_path='toggle-favorite')
     def toggle_favorite(self, request, pk=None):
         track = self.get_object()
         user = request.user
 
-        # Toggle favorite status
         existing_like = Like.objects.filter(user=user, track=track).first()
         if existing_like:
             existing_like.delete()
-            likes_count = Like.objects.filter(track=track).count()
-            return Response({
-                "status": "Track unliked",
-                "likes_count": likes_count,
-                "favorite": False
-            }, status=200)
-
+            return Response({"status": "Track unfavorited"}, status=status.HTTP_200_OK)
+        
         Like.objects.create(user=user, track=track)
-        likes_count = Like.objects.filter(track=track).count()
-        return Response({
-            "status": "Track liked",
-            "likes_count": likes_count,
-            "favorite": True
-        }, status=200)
+        return Response({"status": "Track favorited"}, status=status.HTTP_200_OK)
 
 
     @action(detail=False, methods=['get'], url_path='favorites')

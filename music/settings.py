@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-sm4_o$%#fl*t((*#4tgmzp=@d%djqaxuva=t#u9#i$^p*ex8jf
 DEBUG = True
 
 
-ALLOWED_HOSTS = ['192.168.143.138','192.168.181.138']
+ALLOWED_HOSTS = ['192.168.31.138']
 
 
 CORS_ALLOW_HEADERS =[
