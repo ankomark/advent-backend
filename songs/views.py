@@ -27,13 +27,17 @@ from .serializers import (
 
 class SignUpView(APIView):
     permission_classes = [AllowAny]
+
     def post(self, request):
+        print("Request data received:", request.data)  # Debug log
+
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+        
+        print("Serializer errors:", serializer.errors)  # Debug log
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -54,20 +58,25 @@ class TrackViewSet(viewsets.ModelViewSet):
     serializer_class = TrackSerializer
     permission_classes = [IsAuthenticated]
 
-
     def perform_create(self, serializer):
         title = serializer.validated_data.get('title')
         slug = slugify(title)
-
-        # Ensure the slug is unique by appending a number if necessary
         base_slug = slug
         counter = 1
         while Track.objects.filter(slug=slug).exists():
             slug = f"{base_slug}-{counter}"
             counter += 1
-
-        # Save the serializer with artist (current user) and the unique slug
         serializer.save(artist=self.request.user, slug=slug)
+
+    @action(detail=False, methods=['post'], url_path='upload')
+    def upload_track(self, request):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(artist=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 
     
@@ -210,6 +219,20 @@ class ProfileViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Profile.DoesNotExist:
             return Response({'detail': 'Profile does not exist for this user.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+    @action(detail=False, methods=['get'], url_path='by_user/(?P<user_id>[^/.]+)')
+    def by_user(self, request, user_id=None):
+        """Retrieve a profile by user ID."""
+        try:
+            user = User.objects.get(id=user_id)
+            profile = user.profile
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Profile.DoesNotExist:
+            return Response({'detail': 'Profile not found for this user.'}, status=status.HTTP_404_NOT_FOUND)
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
@@ -255,3 +278,20 @@ class FavoriteTracksView(APIView):
         favorite_tracks = Track.objects.filter(likes__user=user)  # Query for the user's favorites
         serializer = TrackSerializer(favorite_tracks, many=True, context={"request": request})
         return Response(serializer.data, status=200)
+
+# class ProfileByUserView(APIView):
+#     permission_classes = [permissions.AllowAny]
+
+#     def get(self, request, user_id):
+#         try:
+#             user = User.objects.get(id=user_id)
+#         except User.DoesNotExist:
+#             return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+#         try:
+#             profile = user.profile
+#         except Profile.DoesNotExist:
+#             return Response({'detail': 'Profile not found for this user.'}, status=status.HTTP_404_NOT_FOUND)
+
+#         serializer = ProfileSerializer(profile, context={'request': request})
+#         return Response(serializer.data, status=status.HTTP_200_OK)

@@ -7,14 +7,14 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'is_artist', 'password')
+        fields = ('id', 'username', 'email',  'password')
 
     def create(self, validated_data):
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
-            is_artist=validated_data.get('is_artist', False)
+            # is_artist=validated_data.get('is_artist', False)
         )
         return user
 class TrackSerializer(serializers.ModelSerializer):
@@ -48,7 +48,7 @@ class PlaylistSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['bio', 'birth_date', 'location', 'is_public', 'picture']
+        fields = ['bio', 'birth_date', 'location', 'is_public', 'picture',]
 
     def create(self, validated_data):
         user = self.context['request'].user  # Access user from request

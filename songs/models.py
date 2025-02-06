@@ -10,7 +10,7 @@ class User(AbstractUser):
     followers = models.ManyToManyField(
         'self', symmetrical=False, related_name='followed_by', blank=True
     )
-    is_artist = models.BooleanField(default=False)
+    # is_artist = models.BooleanField(default=False)
 
     groups = models.ManyToManyField(
         Group,
