@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-sm4_o$%#fl*t((*#4tgmzp=@d%djqaxuva=t#u9#i$^p*ex8jf
 DEBUG = True
 
 
-ALLOWED_HOSTS = ['192.168.31.138']
+ALLOWED_HOSTS = ['192.168.230.138']
 
 
 CORS_ALLOW_HEADERS =[
@@ -45,7 +45,10 @@ CORS_ALLOW_METHODS =[
 ]
 CORS_ALLOW_ALL_ORIGINS = True
 # Application definition
-
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:19006",
+    "http://192.168.230.138"  # Adjust for your network
+]
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -155,3 +158,5 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800

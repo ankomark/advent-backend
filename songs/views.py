@@ -14,7 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 
 from django.contrib.auth.decorators import login_required
 from rest_framework import status
-from .models import User, Track, Playlist, Profile, Comment, Like, Category
+from .models import User,SocialPost,PostSave,PostComment, PostLike, Track, Playlist, Profile, Comment, Like, Category
 from .serializers import (
     UserSerializer,
     TrackSerializer,
@@ -23,8 +23,13 @@ from .serializers import (
     CommentSerializer,
     LikeSerializer,
     CategorySerializer,
+    SocialPostSerializer, 
+    PostLikeSerializer,
+    PostCommentSerializer,
+    PostSaveSerializer,
 )
-
+import logging
+logger = logging.getLogger(__name__)
 class SignUpView(APIView):
     permission_classes = [AllowAny]
 
@@ -268,19 +273,180 @@ class FavoriteTracksView(APIView):
         serializer = TrackSerializer(favorite_tracks, many=True, context={"request": request})
         return Response(serializer.data, status=200)
 
-# class ProfileByUserView(APIView):
-#     permission_classes = [permissions.AllowAny]
+class SocialPostViewSet(viewsets.ModelViewSet):
+    queryset = SocialPost.objects.all()
+    serializer_class = SocialPostSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
-#     def get(self, request, user_id):
-#         try:
-#             user = User.objects.get(id=user_id)
-#         except User.DoesNotExist:
-#             return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+    def perform_create(self, serializer):
+        try:
+            media_file = self.request.FILES.get('media_file')
+            content_type = self.request.data.get('content_type')
+            caption = self.request.data.get('caption')
 
-#         try:
-#             profile = user.profile
-#         except Profile.DoesNotExist:
-#             return Response({'detail': 'Profile not found for this user.'}, status=status.HTTP_404_NOT_FOUND)
+            if not all([media_file, content_type, caption]):
+                missing = [field for field in ['media_file', 'content_type', 'caption'] if not self.request.data.get(field)]
+                raise ValidationError({ "missing_fields": missing })
 
-#         serializer = ProfileSerializer(profile, context={'request': request})
-#         return Response(serializer.data, status=status.HTTP_200_OK)
+            # Verify file signature
+            allowed_types = {
+                'image': ['image/jpeg', 'image/png'],
+                'video': ['video/mp4']
+            }
+            
+            if content_type not in allowed_types:
+                raise ValidationError({"content_type": "Invalid content type. Must be image/video"})
+            
+            if media_file.content_type not in allowed_types[content_type]:
+                raise ValidationError({"media_file": f"Invalid {content_type} format. Allowed: {', '.join(allowed_types[content_type])}"})
+
+            serializer.save(user=self.request.user)
+            
+        except Exception as e:
+            logger.error(f"Create post error: {str(e)}")
+            raise
+     
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def like(self, request, pk=None):
+        post = self.get_object()
+        user = request.user
+        
+        # Check if like exists
+        like_exists = PostLike.objects.filter(post=post, user=user).exists()
+        
+        if like_exists:
+            # Unlike the post
+            PostLike.objects.filter(post=post, user=user).delete()
+            liked = False
+        else:
+            # Like the post
+            PostLike.objects.create(post=post, user=user)
+            liked = True
+        
+        # Get updated like count
+        likes_count = PostLike.objects.filter(post=post).count()
+        
+        return Response({
+            'status': 'success',
+            'likes_count': likes_count,
+            'is_liked': liked
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def comment(self, request, pk=None):
+        post = self.get_object()
+        serializer = PostCommentSerializer(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            serializer.save(user=request.user, post=post)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def save_post(self, request, pk=None):
+        post = self.get_object()
+        user = request.user
+        
+        if PostSave.objects.filter(user=user, post=post).exists():
+            return Response(
+                {"error": "You have already saved this post."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        PostSave.objects.create(user=user, post=post)
+        return Response(
+            {"status": "Post saved"},
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=True, methods=['get'])
+    def share(self, request, pk=None):
+        post = self.get_object()
+        share_url = request.build_absolute_uri(post.get_absolute_url())
+        return Response(
+            {"share_url": share_url},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        post = self.get_object()
+        if not post.media_file:
+            return Response(
+                {'error': 'Media file not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        return FileResponse(
+            open(post.media_file.path, 'rb'), 
+            as_attachment=True, 
+            filename=post.media_file.name
+        )
+
+
+class PostLikeViewSet(viewsets.ModelViewSet):
+    queryset = PostLike.objects.all()
+    serializer_class = PostLikeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(user=self.request.user)
+
+
+class PostCommentViewSet(viewsets.ModelViewSet):
+    queryset = PostComment.objects.all()
+    serializer_class = PostCommentSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        post_id = self.kwargs.get('post_pk')
+        if post_id:
+            return PostComment.objects.filter(post__id=post_id)
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        post_id = self.kwargs.get('post_pk')
+        try:
+            post = SocialPost.objects.get(id=post_id)
+        except SocialPost.DoesNotExist:
+            raise ValidationError({"error": "Post not found"})
+        serializer.save(user=self.request.user, post=post)
+
+
+class PostSaveViewSet(viewsets.ModelViewSet):
+    queryset = PostSave.objects.all()
+    serializer_class = PostSaveSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(user=self.request.user)
+
+
+# Update UserViewSet to include social posts
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    @action(detail=True, methods=['get'])
+    def social_posts(self, request, pk=None):
+        user = self.get_object()
+        posts = SocialPost.objects.filter(user=user)
+        page = self.paginate_queryset(posts)
+        
+        if page is not None:
+            serializer = SocialPostSerializer(
+                page, 
+                many=True,
+                context={'request': request}
+            )
+            return self.get_paginated_response(serializer.data)
+            
+        serializer = SocialPostSerializer(
+            posts, 
+            many=True,
+            context={'request': request}
+        )
+        return Response(serializer.data)

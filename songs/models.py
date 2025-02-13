@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.utils.text import slugify
+from django.core.validators import FileExtensionValidator
 
 
 # Custom User Model
@@ -120,3 +121,76 @@ class Profile(models.Model):
 
     def __str__(self):
         return f'Profile of {self.user.username}'
+
+
+class SocialPost(models.Model):
+    CONTENT_TYPES = (
+        ('video', 'Video'),
+        ('image', 'Image'),
+    )
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_posts')
+    content_type = models.CharField(max_length=5, choices=CONTENT_TYPES)
+    media_file = models.FileField(
+        upload_to='social_media/',
+        validators=[
+            FileExtensionValidator(
+                allowed_extensions=['mp4', 'mov', 'avi', 'jpg', 'jpeg', 'png']
+            )
+        ]
+    )
+    song = models.ForeignKey(
+        Track, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        help_text="Optional song for image posts"
+    )
+    caption = models.TextField(blank=True)
+    tags = models.CharField(max_length=200, blank=True)
+    location = models.CharField(max_length=100, blank=True)
+    duration = models.DurationField(
+        null=True,
+        blank=True,
+        help_text="Duration for video posts (max 1 minute)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username}'s {self.content_type} post"
+
+    def clean(self):
+        super().clean()
+        if self.content_type == 'video':
+            ext = os.path.splitext(self.media_file.name)[1].lower()
+            if ext not in ['.mp4', '.mov', '.avi']:
+                raise ValidationError("Invalid video format")
+            if self.duration and self.duration > timedelta(minutes=1):
+                raise ValidationError("Video cannot exceed 1 minute")
+        elif self.content_type == 'image' and self.song:
+            ext = os.path.splitext(self.song.audio_file.name)[1].lower()
+            if ext not in ['.mp3', '.wav', '.ogg']:
+                raise ValidationError("Invalid audio format")
+
+class PostLike(models.Model):
+    post = models.ForeignKey(SocialPost, on_delete=models.CASCADE, related_name='likes')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_likes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('post', 'user')
+
+class PostComment(models.Model):
+    post = models.ForeignKey(SocialPost, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_comments')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class PostSave(models.Model):
+    post = models.ForeignKey(SocialPost, on_delete=models.CASCADE, related_name='saves')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='saved_posts')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('post', 'user')

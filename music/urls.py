@@ -10,12 +10,12 @@ from rest_framework_simplejwt.views import (
 from songs.views import SignUpView
 from songs.views import ProfileViewSet  # Import your ProfileViewSet
 # Other view imports...
-
+from songs.views import SocialPostViewSet
 # Create a router
 router = routers.DefaultRouter()
 router.register(r'profiles', ProfileViewSet)  # Register the ProfileViewSet
 # Register other viewsets as needed
-
+router.register(r'social-posts', SocialPostViewSet, basename='socialpost')
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),  # Include the router URLs
